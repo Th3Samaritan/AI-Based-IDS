@@ -1,15 +1,8 @@
 # features_mapper.py
 
+from scapy.all import TCP
+
 def map_features(packet, stats):
-    """
-    Extracts the model-compatible feature vector from a packet + flow stats.
-    The model expects:
-        - packet_size
-        - flow_duration
-        - packet_rate
-        - byte_rate
-        - window_size
-    """
     flow_duration = stats['last_time'] - stats['start_time']
     flow_duration = flow_duration if flow_duration > 0 else 1e-6
 

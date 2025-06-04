@@ -1,8 +1,8 @@
 # detection_engine_multiclass.py
 
-import numpy as np
-import joblib
 import os
+import joblib
+import pandas as pd
 
 class MultiClassDetectionEngine:
     def __init__(self, model_path="models"):
@@ -15,14 +15,14 @@ class MultiClassDetectionEngine:
         return {
             'syn_flood': {
                 'condition': lambda features: (
-                    features['tcp_flags'] == 2 and
-                    features['packet_rate'] > 100
+                    features.get('tcp_flags') == 2 and
+                    features.get('packet_rate', 0) > 100
                 )
             },
             'port_scan': {
                 'condition': lambda features: (
-                    features['packet_size'] < 100 and
-                    features['packet_rate'] > 50
+                    features.get('packet_size', 0) < 100 and
+                    features.get('packet_rate', 0) > 50
                 )
             }
         }
@@ -38,23 +38,21 @@ class MultiClassDetectionEngine:
                     'confidence': 1.0
                 })
 
-        # Multi-class classifier prediction
-        vector = np.array([[features.get(k, 0.0) for k in [
-            'packet_size', 'flow_duration', 'packet_rate', 'byte_rate', 'window_size'
-        ]]])
-        vector_scaled = self.scaler.transform(vector)
-        pred_class = self.classifier.predict(vector_scaled)[0]
-        label = self.label_encoder.inverse_transform([pred_class])[0]
+        vector_df = pd.DataFrame([[
+            features.get(k, 0.0) for k in [
+                'packet_size', 'flow_duration', 'packet_rate', 'byte_rate', 'window_size'
+            ]
+        ]], columns=['packet_size', 'flow_duration', 'packet_rate', 'byte_rate', 'window_size'])
 
-        confidence = (
-            max(self.classifier.predict_proba(vector_scaled)[0])
-            if hasattr(self.classifier, 'predict_proba') else 1.0
-        )
+        vector_scaled = self.scaler.transform(vector_df)
+        pred = self.classifier.predict(vector_scaled)[0]
+        label = self.label_encoder.inverse_transform([pred])[0]
+        prob = self.classifier.predict_proba(vector_scaled)[0][pred]
 
         threats.append({
             'type': 'classifier',
             'label': label,
-            'confidence': confidence
+            'confidence': round(prob, 4)
         })
 
         return threats

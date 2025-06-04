@@ -1,8 +1,8 @@
 # detection_engine_binary.py
 
-import numpy as np
-import joblib
 import os
+import joblib
+import pandas as pd
 
 class BinaryDetectionEngine:
     def __init__(self, model_path="models"):
@@ -14,14 +14,14 @@ class BinaryDetectionEngine:
         return {
             'syn_flood': {
                 'condition': lambda features: (
-                    features['tcp_flags'] == 2 and
-                    features['packet_rate'] > 100
+                    features.get('tcp_flags') == 2 and
+                    features.get('packet_rate', 0) > 100
                 )
             },
             'port_scan': {
                 'condition': lambda features: (
-                    features['packet_size'] < 100 and
-                    features['packet_rate'] > 50
+                    features.get('packet_size', 0) < 100 and
+                    features.get('packet_rate', 0) > 50
                 )
             }
         }
@@ -29,6 +29,7 @@ class BinaryDetectionEngine:
     def detect_threats(self, features: dict) -> list:
         threats = []
 
+        # Signature-based rules
         for rule_name, rule in self.signature_rules.items():
             if rule['condition'](features):
                 threats.append({
@@ -37,21 +38,22 @@ class BinaryDetectionEngine:
                     'confidence': 1.0
                 })
 
-        # Binary classifier prediction
-        vector = np.array([[features.get(k, 0.0) for k in [
-            'packet_size', 'flow_duration', 'packet_rate', 'byte_rate', 'window_size'
-        ]]])
-        vector_scaled = self.scaler.transform(vector)
-        prediction = self.classifier.predict(vector_scaled)[0]
+        # Classifier input
+        vector_df = pd.DataFrame([[
+            features.get(k, 0.0) for k in [
+                'packet_size', 'flow_duration', 'packet_rate', 'byte_rate', 'window_size'
+            ]
+        ]], columns=['packet_size', 'flow_duration', 'packet_rate', 'byte_rate', 'window_size'])
 
-        if prediction == 1:
+        vector_scaled = self.scaler.transform(vector_df)
+        pred = self.classifier.predict(vector_scaled)[0]
+        prob = self.classifier.predict_proba(vector_scaled)[0][pred]
+
+        if pred == 1:
             threats.append({
                 'type': 'classifier',
                 'label': 'ATTACK',
-                'confidence': (
-                    max(self.classifier.predict_proba(vector_scaled)[0])
-                    if hasattr(self.classifier, 'predict_proba') else 1.0
-                )
+                'confidence': round(prob, 4)
             })
 
         return threats

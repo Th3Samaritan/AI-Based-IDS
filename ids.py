@@ -5,10 +5,33 @@ from collections import defaultdict
 import threading
 import queue
 from datetime import datetime
+import psutil
+
 from features_mapper import map_features
 from model_factory import load_engine
 from prediction_logger import PredictionLogger
 from alert_system import AlertSystem
+
+# ✅ Cross-platform interface auto-detection (Windows + Linux)
+def get_default_interface():
+    stats = psutil.net_if_stats()
+    addrs = psutil.net_if_addrs()
+
+    exclude = ("loopback", "lo", "vmware", "virtual", "bluetooth", "local area connection", "isatap")
+
+    candidates = []
+    for iface, iface_stats in stats.items():
+        iface_lower = iface.lower()
+        if iface_stats.isup and not any(e in iface_lower for e in exclude):
+            for snic in addrs.get(iface, []):
+                if snic.family.name == 'AF_INET':  # IPv4
+                    candidates.append((iface, snic.address))
+
+    if not candidates:
+        raise RuntimeError("❌ No active network interface with IPv4 found.")
+
+    print(f"[✓] Available interfaces with IPv4: {candidates}")
+    return candidates[0][0]
 
 class PacketCapture:
     def __init__(self):
@@ -19,7 +42,7 @@ class PacketCapture:
         if IP in packet and TCP in packet:
             self.packet_queue.put(packet)
 
-    def start_capture(self, interface="eth0"):
+    def start_capture(self, interface):
         def capture_thread():
             sniff(
                 iface=interface,
@@ -66,8 +89,8 @@ class TrafficAnalyzer:
         return None
 
 class IntrusionDetectionSystem:
-    def __init__(self, interface="eth0"):
-        self.interface = interface
+    def __init__(self, interface=None):
+        self.interface = interface or get_default_interface()
         self.packet_capture = PacketCapture()
         self.traffic_analyzer = TrafficAnalyzer()
         self.detection_engine, self.config = load_engine()
@@ -103,5 +126,5 @@ class IntrusionDetectionSystem:
                     continue
 
         except KeyboardInterrupt:
-            print(f"[{datetime.now().isoformat()}] 🔴 Stopping IDS...")
+            print(f"[{datetime.now().isoformat()}] 🔴 IDS stopped.")
             self.packet_capture.stop()

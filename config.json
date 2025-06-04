@@ -1,5 +1,5 @@
 {
-  "model_type": "binary",
+  "model_type": "multi",
   "model_dir": "models",
   "log_file": "predictions_log.csv"
 }
